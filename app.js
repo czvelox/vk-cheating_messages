@@ -1,25 +1,34 @@
-let config = require('./config.json');
-const rq = require('prequest');
+const axios = require('axios'), config = require('./config.json'), fs = require('fs');
 
-const hearts = ["❤", "💜", "💛", "💚", "💙", "🖤"];
+const start = async () => {
+    const peer_ids = []; // Массив с айдишниками для последующего использования в запросе
+    for(let i = 0; i < 100; i++) peer_ids.push(config.group_id -= 1); // Закидываем в массив 100 айдишников (максимум в запросе)
 
-console.log(`\x1b[36m> \x1b[0mПроверка на наличие аккаунтов в друзьях..\n`);
-config.tokens.map(x => {
-    config.owner_id.map(y => {
-    	rq(`https://api.vk.com/method/friends.add?user_id=${y}&access_token=${x}&v=5.83`).then(res => {
-	    if(!res['response']) console.log(`\x1b[31m> \x1b[0mПроизошла ошибка | ${x.substring(0, 5)} (${res['error'].error_msg})`);
-            else if(res['response'] == 1) console.log(`\x1b[31m> \x1b[0mОжидается принятие заявки`);
-            else if(res['response'] == 2) console.log(`\x1b[32m> \x1b[0mАккаунт в друзьях`);
-	});
-    })
-});
+    // Делаем запрос чатов с группами
+    const { response: { items } } = await API("messages.getConversationsById", {peer_ids: peer_ids.join(","), peer_id: config.group_id});
 
-setInterval(() => {
-    console.log("\n")
-	config.tokens.map(x => {
-		rq(`https://api.vk.com/method/messages.createChat?user_ids=${config.owner_id.join(',')}&access_token=${x}&v=5.83&title=${encodeURI(hearts[Math.floor(Math.random() * hearts.length)])}`).then(res => {
-			if(!res['response']) console.log(`\x1b[31m> \x1b[0mБеседа не была создана | ${x.substring(0, 5)} (${res['error'].error_msg})`);
-			else console.log(`\x1b[32m> \x1b[0mБеседа создана.`);
-		});
-	});
-}, config.cd);
+    // Фильтруем массив от тех, у кого недоступна отправка сообщений и обходим его
+    for(const item of items.filter(x => x.can_write.allowed)) {
+        await new Promise(async resolve => {
+            // Отправляем пустое сообщение в группу
+            const { error } = await API("messages.send", {message: "&#13;", random_id: 0, peer_id: item.peer.id});
+
+            if(!error) {
+                await API("messages.markAsUnreadConversation", {peer_id: item.peer.id}); // Устанавливаем статус чата как непрочитанный
+                console.log(`\x1b[32m> \x1b[0mСообщение отправлено | ID: ${item.peer.id}`);
+            } else return console.log(`\x1b[31m> \x1b[0mСообщение не было отправлено | ID: ${item.peer.id} | ${error.error_msg} | Code: ${error.error_code}`);
+
+            // Каждый раз сохраняем данные в конфиге, чтобы при последующем запуске оно продолжало работу, а не начинало заново
+            fs.writeFileSync(__dirname + "/config.json", JSON.stringify({...config, group_id: item.peer.id}, null, 4));
+            setTimeout(resolve, config.delay);
+        })
+    }
+
+    start();
+}
+
+async function API(method, params) {
+    return (await axios({url: "https://api.vk.com/method/" + method, method: "GET", params: {access_token: config.access_token, v: '5.131', ...params}})).data;
+}
+
+start();

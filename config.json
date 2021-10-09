@@ -1,9 +1,5 @@
 {
-        "tokens": [
-                "token...",
-                "token...",
-                "token..."
-        ],
-        "owner_id": [540629911],
-        "cd": 15000
+    "delay": 15000,
+    "access_token": "TOKEN",
+    "group_id": 0
 }
